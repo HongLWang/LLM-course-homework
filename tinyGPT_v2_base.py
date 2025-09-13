@@ -44,6 +44,8 @@ def decode(tokens,tokenizer):
     return text.strip()
 
 
+
+
 def save_model_and_tokenizer(model, tokenizer, config):
     if not os.path.exists(config.output_dir):
         os.makedirs(config.output_dir)
@@ -107,16 +109,15 @@ def load_model_and_tokenizer(config):
 
 
 
+
+
 def generate_sql_from_input(config, model, context, question, tokenizer, max_tokens=100):
+
     #Generate SQL from context and question using special tokens
     # if the input is standard context+question, process it as f"[context] {context} [question] {question} [SQL] "
     # otherwise just encode it to get a tensor
 
-
-    if config.all_natural_language_mode:
-        input_text = context  # default questio is empty
-    else:
-        input_text = f"[context] {context} [question] {question} [SQL] "
+    input_text = f"[context] {context} [question] {question} [SQL] "
 
     config.all_natural_language_mode = False
 
@@ -285,44 +286,6 @@ def _test_model(config, model_eval,tokenizer):
         print(f"\nEvaluation results saved to {config.output_dir}/{fp_name}")
 
 
-def interactive_chat(config, model_eval, tokenizer):
-
-    # --- Interactive Testing ---
-    print("\n--- Interactive Testing ---")
-    print("You can now test the model with custom inputs!")
-    print("Format: [context] <your context> [question] <your question>")
-    print("Type 'quit' to exit")
-
-    while True:
-        try:
-            user_input = input("\nEnter your test input: ")
-            if user_input.lower() == 'quit':
-                break
-
-            context_match = re.search(r'\[context\](.*?)\[question\]', user_input)
-            question_match = re.search(r'\[question\](.*?)(?:\[SQL\]|$)', user_input)
-
-            if context_match and question_match:
-                context = context_match.group(1).strip()
-                question = question_match.group(1).strip()
-                config.all_natural_language_mode = False
-            else:
-                config.all_natural_language_mode = True
-                context = user_input
-                question = None
-
-            predicted_sql = generate_sql_from_input(config, model_eval, context, question, tokenizer)
-            print(f"Generated SQL: {predicted_sql}")
-
-
-        except KeyboardInterrupt:
-            print("\nExiting...")
-            break
-        except Exception as e:
-            print(f"Error: {e}")
-
-    print("\nThanks for testing!")
-
 
 
 def set_tokenizer(config):
@@ -490,43 +453,7 @@ def main(config):
     # test model
     _test_model(config, model_eval, tokenizer)
 
-    # try the interative, multi-round chat
-    interactive_chat(config, model_eval,tokenizer)
 
-
-def main_only_interactive_chat(config):
-    # for reproducibility
-    torch.manual_seed(1337)
-
-    tokenizer = set_tokenizer(config)  # init tokenizer, set padding token + add special token + get special token ids and save to config
-
-    # Update vocab size to include new special tokens
-    vocab_size = len(tokenizer)
-    config.vocab_size = vocab_size
-
-    # print tokenier info
-    print_info(config)
-
-    model = GPTv2Base(
-        vocab_size=config.vocab_size,
-        n_embd=config.n_embd,
-        block_size=config.block_size,
-        n_head=config.n_head,
-        n_layer=config.n_layer,
-        dropout=config.dropout,
-        SQL_TOKEN=config.SQL_TOKEN,
-        EOS_TOKEN=config.EOS_TOKEN,
-        QUESTION_TOKEN=config.QUESTION_TOKEN,
-        CONTEXT_TOKEN=config.CONTEXT_TOKEN,
-        PAD_TOKEN=config.PAD_TOKEN
-    )
-
-
-
-    m = model.to(config.device)
-
-    # try the interative, multi-round chat
-    interactive_chat(config, model,tokenizer)
 
 
 
@@ -538,9 +465,5 @@ if __name__ == '__main__':
     config.tokenizer_init = True # need to init
 
     ## If you want to train and evaluate the model
-    # main(config)
-
-    ## IF you want to load the trained model, and test the interactive chat
-    ## Note that due to the small scale of this model, natural language interactive chat could print nonsense output
-    main_only_interactive_chat(config)
+    main(config)
 

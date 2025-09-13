@@ -386,7 +386,154 @@ def main(config):
     _testing_n_print(test_cases, model, tokenizer,config)
 
 
+def main_test(config):
+
+    # load tokenizer
+    tokenizer = set_tokenizer(config)
+    vocab_size = len(tokenizer)
+    print(f"Loaded tokenizer with vocab size: {vocab_size}")
+    print(f"Special token IDs - CONTEXT: {config.CONTEXT_TOKEN}, QUESTION: {config.QUESTION_TOKEN}, SQL: {config.SQL_TOKEN}")
+
+    # Set random seeds for reproducibility
+    torch.manual_seed(1337)
+    random.seed(1337)
+
+
+    # Load pre-trained model
+    print("Loading pre-trained model...")
+    model = GPTLanguageModel(vocab_size=vocab_size, n_embd= config.n_embd,
+                             n_head=config.n_head, n_layer=config.n_layer, block_size=config.block_size,
+                             dropout=config.dropout, SQL_TOKEN=config.SQL_TOKEN,EOS_TOKEN=config.EOS_TOKEN,
+                             QUESTION_TOKEN=config.QUESTION_TOKEN, CONTEXT_TOKEN= config.CONTEXT_TOKEN, PAD_TOKEN=config.PAD_TOKEN)
+
+    model.load_state_dict(torch.load(os.path.join(config.output_dir, 'model_weights.pth')))
+    model = model.to(config.device)
+
+    train_loader, val_loader,training_data, test_data = load_datasets(config,tokenizer)
+
+    test_cases = []
+    for i in range(len(test_data)):
+        sample = test_data[i]
+        test_input = f"{sample['context']} {sample['question']}"
+        expected_sql = sample['sql']
+        test_cases.append((test_input, expected_sql))
+
+
+    model = GPTLanguageModel(vocab_size=vocab_size, n_embd=config.n_embd,
+                             n_head=config.n_head, n_layer=config.n_layer, block_size=config.block_size,
+                             dropout=config.dropout, SQL_TOKEN=config.SQL_TOKEN, EOS_TOKEN=config.EOS_TOKEN,
+                             QUESTION_TOKEN=config.QUESTION_TOKEN, CONTEXT_TOKEN=config.CONTEXT_TOKEN,
+                             PAD_TOKEN=config.PAD_TOKEN)
+
+    checkpoint_path = os.path.join(config.output_dir, 'finetuned_model.pth')
+    state_dict = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+    model.load_state_dict(state_dict)
+
+    _testing_n_print(test_cases, model, tokenizer,config)
+
+
+
+def Natrual_language_chat(config):
+
+    # load tokenizer
+    tokenizer = set_tokenizer(config)
+    vocab_size = len(tokenizer)
+    print(f"Loaded tokenizer with vocab size: {vocab_size}")
+    print(f"Special token IDs - CONTEXT: {config.CONTEXT_TOKEN}, QUESTION: {config.QUESTION_TOKEN}, SQL: {config.SQL_TOKEN}")
+
+    # Set random seeds for reproducibility
+    torch.manual_seed(1337)
+    random.seed(1337)
+
+    model = GPTLanguageModel(vocab_size=vocab_size, n_embd=config.n_embd,
+                             n_head=config.n_head, n_layer=config.n_layer, block_size=config.block_size,
+                             dropout=config.dropout, SQL_TOKEN=config.SQL_TOKEN, EOS_TOKEN=config.EOS_TOKEN,
+                             QUESTION_TOKEN=config.QUESTION_TOKEN, CONTEXT_TOKEN=config.CONTEXT_TOKEN,
+                             PAD_TOKEN=config.PAD_TOKEN)
+
+
+    checkpoint_path = os.path.join(config.output_dir, 'finetuned_model.pth')
+    state_dict = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+    model.load_state_dict(state_dict)
+
+    interactive_chat(config, model, tokenizer)
+
+
+
+
+def interactive_chat(config, model, tokenizer):
+
+    # --- Interactive Testing ---
+    print("\n--- Interactive Testing ---")
+    print("You can now test the model with custom inputs!")
+    print("Format: [context] <your context> [question] <your question>")
+    print("Type 'quit' to exit")
+
+    while True:
+        try:
+            user_input = input("\nEnter your test input: ")
+            if user_input.lower() == 'quit':
+                break
+
+            test_input = parse_user_input(user_input)
+
+            input_tokens = encode(test_input, tokenizer)
+            input_tensor = torch.tensor(input_tokens, dtype=torch.long).unsqueeze(0).to(config.device)
+
+            with torch.no_grad():
+                generated = model.generate(
+                    input_tensor,
+                    max_new_tokens=100,
+                    temperature=0.3,  # Low temperature for more deterministic output
+                    top_k=40,
+                    stop_at_eos=True
+                )  # 100 0.3 40; 50 0.3 20
+
+            generated_text_ori = decode(generated[0].tolist(), tokenizer)
+            # Extract just the SQL part
+            if '[SQL]' in generated_text_ori:
+                generated_text = generated_text_ori.split('[SQL]')[-1].strip()
+                print(generated_text)
+                print('original generated: ',generated_text_ori )
+            else:
+                print(generated_text_ori)
+
+
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
+    print("\nThanks for testing!")
+
+
+
+
+
+def parse_user_input(user_input):
+    try:
+        # Find the positions of the markers
+        context_start = user_input.find('[context]')
+        question_start = user_input.find('[question]')
+
+        if context_start == -1 or question_start == -1:
+            return user_input
+
+        # Extract each part
+        context_part = user_input[context_start:question_start].strip()
+        question_part = user_input[question_start:].strip()
+
+        return f'{context_part} {question_part}'
+
+
+    except Exception as e:
+        return user_input
+
+
 if __name__ == '__main__':
     config = Config2(debug_mode=False, fine_tune_mode=True)
     config.tokenizer_init = False  # need to load exisiting tokenizer from pretrained version
-    main(config)
+    # main(config)
+    Natrual_language_chat(config)
+    # main_test(config)
